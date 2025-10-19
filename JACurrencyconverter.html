@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>JA Currency Converter</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg,#0f172a,#1e293b);
+      color: white;
+      font-family: 'Poppins',sans-serif;
+    }
+    .glass {
+      background: rgba(255,255,255,0.06);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .muted { color: #9ca3af; }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6">
+  <div class="w-full max-w-md">
+    <h1 class="text-3xl font-bold mb-6 text-cyan-400 text-center">💱 JA Currency Converter</h1>
+
+    <div class="glass rounded-2xl p-6 shadow-lg">
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm mb-1">Amount</label>
+          <input id="amount" type="number" value="1" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-700 focus:outline-none" />
+        </div>
+
+        <div class="flex gap-3">
+          <div class="flex-1">
+            <label class="block text-sm mb-1">From</label>
+            <select id="from" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-700"></select>
+          </div>
+          <div class="flex-1">
+            <label class="block text-sm mb-1">To</label>
+            <select id="to" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-700"></select>
+          </div>
+        </div>
+
+        <div class="flex gap-2">
+          <button id="convertBtn" class="flex-1 py-3 rounded-lg text-white font-semibold bg-cyan-500 hover:bg-cyan-600">Convert</button>
+          <button id="retryBtn" class="py-3 px-4 rounded-lg border border-slate-600 text-sm muted">Retry</button>
+        </div>
+
+        <div id="result" class="text-center text-xl font-semibold mt-2 text-cyan-300">Result: --</div>
+        <div class="text-center mt-1">
+          <span id="lastUpdated" class="muted text-sm">Last updated: --</span>
+        </div>
+
+        <div class="text-center mt-3">
+          <span id="statusMsg" class="text-sm muted"></span>
+        </div>
+
+        <div id="errorDetails" class="mt-3 text-sm text-red-300 text-center" style="display:none;"></div>
+      </div>
+    </div>
+
+    <p class="mt-4 text-xs text-center muted">
+      If you get repeated errors, open this page on a local server (python -m http.server) or deploy to GitHub Pages / Netlify. Network/extension/CORS issues commonly cause fetch failures.
+    </p>
+  </div>
+
+  <script>
+    const currencies = {
+      USD: "United States Dollar",
+      INR: "Indian Rupee",
+      EUR: "Euro",
+      GBP: "British Pound",
+      JPY: "Japanese Yen",
+      AED: "UAE Dirham",
+      AUD: "Australian Dollar",
+      CAD: "Canadian Dollar",
+      CHF: "Swiss Franc",
+      CNY: "Chinese Yuan"
+    };
+
+    const fromSelect = document.getElementById('from');
+    const toSelect = document.getElementById('to');
+    const resultDiv = document.getElementById('result');
+    const lastUpdated = document.getElementById('lastUpdated');
+    const statusMsg = document.getElementById('statusMsg');
+    const errorDetails = document.getElementById('errorDetails');
+    const retryBtn = document.getElementById('retryBtn');
+    const convertBtn = document.getElementById('convertBtn');
+
+    // populate selects
+    Object.keys(currencies).forEach(code => {
+      const o1 = document.createElement('option');
+      const o2 = document.createElement('option');
+      o1.value = o2.value = code;
+      o1.textContent = o2.textContent = `${code} - ${currencies[code]}`;
+      fromSelect.appendChild(o1);
+      toSelect.appendChild(o2);
+    });
+    fromSelect.value = 'USD';
+    toSelect.value = 'INR';
+
+    let autoTimer = null;
+    const AUTO_INTERVAL = 5000; // ms
+    let lastSuccessful = null;
+
+    async function convertCurrency(showSpinner = true) {
+      const amount = parseFloat(document.getElementById('amount').value);
+      const from = fromSelect.value;
+      const to = toSelect.value;
+
+      if (!amount || amount <= 0) {
+        resultDiv.textContent = 'Enter a valid amount';
+        return;
+      }
+
+      // UI
+      if (showSpinner) {
+        statusMsg.textContent = 'Fetching latest rate...';
+      }
+      errorDetails.style.display = 'none';
+      statusMsg.style.color = '';
+
+      const url = `https://api.exchangerate.host/convert?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&amount=${encodeURIComponent(amount)}`;
+
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) {
+          const txt = await res.text().catch(()=>res.statusText);
+          throw new Error(`HTTP ${res.status}: ${txt}`);
+        }
+        const data = await res.json();
+        if (typeof data.result !== 'number') throw new Error('Invalid response');
+        resultDiv.textContent = `${amount} ${from} = ${data.result.toFixed(2)} ${to}`;
+        const now = new Date();
+        lastUpdated.textContent = 'Last updated: ' + now.toLocaleTimeString();
+        statusMsg.textContent = 'Live ✓';
+        statusMsg.style.color = 'lightgreen';
+        lastSuccessful = Date.now();
+        errorDetails.style.display = 'none';
+      } catch (err) {
+        // Show detailed error so user can debug (CORS/network/etc)
+        resultDiv.textContent = 'Error fetching rate 😔';
+        statusMsg.textContent = 'Error';
+        statusMsg.style.color = 'tomato';
+        errorDetails.style.display = 'block';
+        // keep message helpful and not enormous
+        const msg = (err && err.message) ? err.message : String(err);
+        errorDetails.innerText = `Details: ${msg}`;
+        console.error('Currency fetch error:', err);
+      }
+    }
+
+    // manual controls
+    convertBtn.addEventListener('click', () => convertCurrency(true));
+    retryBtn.addEventListener('click', () => convertCurrency(true));
+
+    // auto refresh but avoid hammering when offline
+    function startAuto() {
+      if (autoTimer) clearInterval(autoTimer);
+      autoTimer = setInterval(() => {
+        // if we haven't had a successful fetch in the last minute, try less frequently
+        if (lastSuccessful && (Date.now() - lastSuccessful > 60 * 1000)) {
+          // if not recently successful, skip this cycle and try again later
+          convertCurrency(false);
+        } else {
+          convertCurrency(false);
+        }
+      }, AUTO_INTERVAL);
+    }
+
+    // init
+    convertCurrency(true);
+    startAuto();
+
+    // helpful tip: detect when page is loaded via file://
+    if (location.protocol === 'file:') {
+      statusMsg.textContent = 'Note: page opened via file:// — serve it with a local server to avoid blocked requests.';
+      statusMsg.style.color = '#ffcc00';
+    }
+
+    // show network online/offline
+    window.addEventListener('offline', () => {
+      statusMsg.textContent = 'Offline — check your connection.';
+      statusMsg.style.color = 'tomato';
+    });
+    window.addEventListener('online', () => {
+      statusMsg.textContent = 'Back online — fetching...';
+      convertCurrency();
+    });
+  </script>
+</body>
+</html>
